@@ -145,7 +145,8 @@ async function runAgentTurn() {
         }
 
         if (reply.action === 'runTool') {
-            const tool = tools[reply.tool];
+            // Object.hasOwn: only our own tools, not names inherited from Object.prototype ("toString", "constructor").
+            const tool = Object.hasOwn(tools, reply.tool) ? tools[reply.tool] : undefined;
             const result = tool ? tool(reply.date) : { error: `Unknown tool "${reply.tool}"` };
             remember('user', { toolResult: { tool: reply.tool, date: reply.date, result } });
             continue;
