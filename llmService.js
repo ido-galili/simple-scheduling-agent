@@ -1,51 +1,55 @@
-import { GoogleGenAI } from '@google/genai';
+import Anthropic from '@anthropic-ai/sdk';
 import JSON5 from 'json5';
-import dotenv from 'dotenv';
+import 'dotenv/config';
 
-dotenv.config();
+// LLM access for the agent. Callers only see askLLMWithMessages, so the
+// provider behind it (currently Claude, via the Anthropic SDK) can be swapped
+// without touching agent.js. ANTHROPIC_API_KEY is read from .env.
 
-const gemini = new GoogleGenAI({});
+const client = new Anthropic();
+const MODEL = 'claude-opus-5-5';
 
 // Example usage:
 /*
-    const llmResponse = await askGeminiWithMessages([
-        {
-            role: 'user',
-            parts: [{ text: 'What is your name? Respond in valid JSON: {"name": "John Doe"}' }],
-        },
-    ]);
+    const llmResponse = await askLLMWithMessages(
+        [{ role: 'user', content: 'What is your name?' }],
+        'Always respond in valid JSON: {"name": "..."}',
+    );
 
     console.log(`My name is ${llmResponse.name}`);
 */
 
-export const askGeminiWithMessages = async (messages) => {
-    // The existing agents store their system instruction as the first model turn.
-    const hasSystemInstruction = messages[0]?.role === 'model';
-    const contents = hasSystemInstruction ? messages.slice(1) : messages;
-    const systemInstruction = hasSystemInstruction
-        ? { parts: messages[0].parts }
-        : undefined;
+/**
+ * Send a conversation to the LLM and get back the JSON object from its reply.
+ *
+ * @param messages - Conversation history (the agent's memory):
+ *                   [{ role: 'user' | 'assistant', content: '...' }, ...]. Must start with 'user'.
+ * @param system   - Optional system prompt: standing instructions, kept separate from the history.
+ * @returns The parsed JSON object found in the reply.
+ */
+export const askLLMWithMessages = async (messages, system) => {
+    const response = await client.beta.messages.create({
+        model: MODEL,
+        max_tokens: 16000,
+        output_config: { effort: 'low' }, // quick replies for a terminal chat
+        // If the model declines for safety reasons, retry on a fallback model instead of just stopping.
+        betas: ['server-side-fallback-2026-07-01'],
+        fallbacks: 'default',
+        system,
+        messages,
+    });
 
-    try {
-        const result = await gemini.models.generateContent({
-            model: 'gemini-3.5-flash-lite',
-            contents,
-            config: {
-                systemInstruction,
-            },
-        });
-
-        const response = result.text;
-        if (!response) return {};
-
-        const parsedResponse = parseJSONFromString(response, 'object');
-        return parsedResponse
-    } catch (error) {
-        console.error('Error generating content with LLM:', error);
-        throw error;
+    if (response.stop_reason === 'refusal') {
+        throw new Error(`LLM declined: ${response.stop_details?.explanation ?? 'no reason given'}`);
     }
-};
 
+    const text = response.content
+        .filter((block) => block.type === 'text')
+        .map((block) => block.text)
+        .join('');
+
+    return parseJSONFromString(text, 'object');
+};
 
 export const parseJSONFromString = (
     result,

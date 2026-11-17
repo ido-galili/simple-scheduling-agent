@@ -5,6 +5,15 @@ const rl = readline.createInterface({
     output: process.stdout
 });
 
+// Ctrl+C: readline catches it, and without a listener it only pauses input. Exit cleanly instead.
+// 'close' also covers Ctrl+D (end of input).
+const quit = () => {
+    console.log('\nBye!');
+    process.exit(0);
+};
+rl.on('SIGINT', quit);
+rl.on('close', quit);
+
 // Example usage:
 /*
     const userInput = await getUserInput('What is your name? ');
