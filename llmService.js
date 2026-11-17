@@ -22,10 +22,11 @@ const MODEL = 'claude-opus-5-5';
 /**
  * Send a conversation to the LLM and get back the JSON object from its reply.
  *
- * @param messages - Conversation history (the agent's memory):
- *                   [{ role: 'user' | 'assistant', content: '...' }, ...]. Must start with 'user'.
- * @param system   - Optional system prompt: standing instructions, kept separate from the history.
- * @returns The parsed JSON object found in the reply.
+ * @param {{ role: 'user' | 'assistant', content: string }[]} messages - Conversation history
+ *   (the agent's memory). Must start with a 'user' message.
+ * @param {string} [system] - System prompt: standing instructions, kept separate from the history.
+ * @returns {Promise<object>} The parsed JSON object found in the reply.
+ * @throws If the API call fails, the model declines, or the reply contains no JSON.
  */
 export const askLLMWithMessages = async (messages, system) => {
     const response = await client.beta.messages.create({
@@ -51,10 +52,16 @@ export const askLLMWithMessages = async (messages, system) => {
     return parseJSONFromString(text, 'object');
 };
 
-export const parseJSONFromString = (
-    result,
-    expectedType, //array or object
-) => {
+/**
+ * Extract and parse the JSON object or array in a string, ignoring any text
+ * around it (models sometimes wrap JSON in prose or ```json fences).
+ *
+ * @param {string} result - Text that contains JSON.
+ * @param {'object' | 'array'} expectedType - Whether to look for {...} or [...].
+ * @returns {any} The parsed value.
+ * @throws If no JSON of the expected type is found, or it fails to parse.
+ */
+export const parseJSONFromString = (result, expectedType) => {
     const [startChar, endChar] = expectedType === 'object' ? ['{', '}'] : ['[', ']'];
 
     const start = result.indexOf(startChar);

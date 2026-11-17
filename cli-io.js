@@ -5,8 +5,12 @@ const rl = readline.createInterface({
     output: process.stdout
 });
 
-// Ctrl+C: readline catches it, and without a listener it only pauses input. Exit cleanly instead.
-// 'close' also covers Ctrl+D (end of input).
+/**
+ * Say goodbye and exit. Bound to Ctrl+C (readline catches it, and without a
+ * listener it only pauses input) and to Ctrl+D / end of input ('close').
+ *
+ * @returns {never}
+ */
 const quit = () => {
     console.log('\nBye!');
     process.exit(0);
@@ -19,6 +23,12 @@ rl.on('close', quit);
     const userInput = await getUserInput('What is your name? ');
     console.log(`Hello, ${userInput}!`);
 */
+/**
+ * Ask a question in the terminal and wait for the user's answer.
+ *
+ * @param {string} question - Prompt text shown before the cursor.
+ * @returns {Promise<string>} The line the user typed.
+ */
 export const getUserInput = (question) => {
     return new Promise(resolve => rl.question(question, resolve));
 }

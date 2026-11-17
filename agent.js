@@ -1,23 +1,42 @@
 import { askLLMWithMessages } from './llmService.js';
 import { getUserInput } from './cli-io.js';
 
-// Max LLM calls the agent may make for one user message, so a confused model
-// can't loop through tools forever.
+/**
+ * Max LLM calls the agent may make for one user message, so a confused model
+ * can't loop through tools forever.
+ * @type {number}
+ */
 const MAX_STEPS = 10;
 
 // ---------- Appointment store ----------
-// In-memory calendar: the set of booked slots, keyed by "YYYY-MM-DD HH:mm".
-// It lives only while the program runs.
+
+/**
+ * In-memory calendar: the set of booked slots, keyed by "YYYY-MM-DD HH:mm".
+ * It lives only while the program runs.
+ * @type {Set<string>}
+ */
 const booked = new Set();
 
 // ---------- Tools (Part 2) ----------
 // The model never runs these itself; it asks for one by name and our code calls it.
 
+/**
+ * Check whether a time slot is free.
+ *
+ * @param {string} date - Slot to check, "YYYY-MM-DD HH:mm".
+ * @returns {{ available: boolean }} Whether the slot is free.
+ */
 const checkAvailability = (date) => {
     console.log("Checking availability for date:", date);
     return { available: !booked.has(date) };
 };
 
+/**
+ * Book an appointment, unless the slot is already taken.
+ *
+ * @param {string} date - Slot to book, "YYYY-MM-DD HH:mm".
+ * @returns {{ success: boolean, error?: string }} The outcome, with an error message if it failed.
+ */
 const scheduleAppointment = (date) => {
     console.log("Scheduling appointment for date:", date);
     if (booked.has(date)) return { success: false, error: 'Slot already booked' };
@@ -25,6 +44,12 @@ const scheduleAppointment = (date) => {
     return { success: true };
 };
 
+/**
+ * Cancel an existing appointment.
+ *
+ * @param {string} date - Slot to cancel, "YYYY-MM-DD HH:mm".
+ * @returns {{ success: boolean, error?: string }} The outcome, with an error message if nothing was booked there.
+ */
 const deleteAppointment = (date) => {
     console.log("Deleting appointment for date:", date);
     if (!booked.has(date)) return { success: false, error: 'No appointment at this time' };
@@ -32,11 +57,20 @@ const deleteAppointment = (date) => {
     return { success: true };
 };
 
+/**
+ * Tools the model may ask for, looked up by the name in its runTool reply.
+ * @type {Record<string, (date: string) => object>}
+ */
 const tools = { checkAvailability, scheduleAppointment, deleteAppointment };
 
 // ---------- System prompt ----------
 
-// Local "YYYY-MM-DD HH:mm"; the same format the model must use for dates.
+/**
+ * Format a date as local "YYYY-MM-DD HH:mm", the same format the model must use for dates.
+ *
+ * @param {Date} d - The date to format.
+ * @returns {string} The formatted date.
+ */
 const formatDate = (d) => {
     const pad = (n) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -71,15 +105,35 @@ Ask for one tool per reply. After a runTool reply you will receive a message sha
 - When a request is fully done, ask if they need anything else, and mention they can type "exit" to quit.`;
 
 // ---------- Memory (Part 1) ----------
-// The model is stateless: this array is everything it "remembers".
-// We send all of it on every call.
+
+/**
+ * The conversation history. The model is stateless: this array is everything
+ * it "remembers", and we send all of it on every call.
+ * @type {{ role: 'user' | 'assistant', content: string }[]}
+ */
 const memory = [];
 
-const remember = (role, data) => memory.push({ role, content: JSON.stringify(data) });
+/**
+ * Add a JSON message (a model reply, tool result or error) to memory.
+ *
+ * @param {'user' | 'assistant'} role - Who the message is from: 'assistant' for the model, 'user' for everything else.
+ * @param {object} data - The message, stored as a JSON string.
+ * @returns {void}
+ */
+const remember = (role, data) => {
+    memory.push({ role, content: JSON.stringify(data) });
+};
 
 // ---------- Agent turn (Part 3) ----------
-// Handles one user message: keep calling the LLM and running the tools it asks
-// for until it answers the user, or until we hit MAX_STEPS.
+
+/**
+ * Handle one user message: keep calling the LLM and running the tools it asks
+ * for until it answers the user, or until MAX_STEPS is reached.
+ * Expects the user's message to already be the last entry in memory.
+ *
+ * @returns {Promise<void>}
+ * @throws If the LLM call fails or its reply contains no JSON.
+ */
 async function runAgentTurn() {
     for (let step = 0; step < MAX_STEPS; step++) {
         const reply = await askLLMWithMessages(memory, SYSTEM_PROMPT);
@@ -108,6 +162,12 @@ async function runAgentTurn() {
 }
 
 // ---------- Main loop (Part 1) ----------
+
+/**
+ * Chat loop: read the user's input, let the agent handle it, repeat until "exit".
+ *
+ * @returns {Promise<void>}
+ */
 async function main() {
     console.log('Scheduling agent. Type "exit" or press Ctrl+C to quit.\n');
 
